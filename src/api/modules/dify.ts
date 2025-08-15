@@ -2,6 +2,30 @@ import request from '../request'
 import type { BaseResponse, RequestConfig } from '../types'
 import { getCurrentEnv } from '../config/env'
 
+// Dify 错误类型
+export class DifyError extends Error {
+    constructor(
+        message: string,
+        public status?: number,
+        public code?: string,
+        public details?: unknown
+    ) {
+        super(message)
+        this.name = 'DifyError'
+    }
+}
+
+export class DifyStreamError extends DifyError {
+    constructor(
+        message: string,
+        public event?: DifyStreamEvent,
+        public originalError?: Error
+    ) {
+        super(message)
+        this.name = 'DifyStreamError'
+    }
+}
+
 // Dify 流式响应事件类型
 export interface DifyStreamEvent {
     event: string
@@ -23,11 +47,16 @@ export interface DifyTextChunkData {
 
 // Dify 工作流 API 相关类型定义
 export interface DifyWorkflowParams {
+    workflow_id?: string
+    inputs?: Record<string, unknown>
+    query?: string
+    user?: string
+    conversation_id?: string
     [key: string]: unknown
 }
 
-export interface DifyWorkflowResponse {
-    data: unknown
+export interface DifyWorkflowResponse<T = unknown> {
+    data: T
     message: string
     status: string
 }
@@ -47,7 +76,7 @@ export interface DifyStreamConfig {
     onWorkflowFinished?: (event: DifyStreamEvent) => void
     onTTSMessage?: (event: DifyStreamEvent) => void
     onTextChunk?: (text: string, fullText: string) => void
-    onError?: (error: Error) => void
+    onError?: (error: DifyStreamError) => void
     onComplete?: () => void
 }
 
@@ -79,7 +108,16 @@ export class DifyStreamParser {
                     const event: DifyStreamEvent = JSON.parse(jsonStr)
                     this.handleEvent(event)
                 } catch (error) {
-                    console.warn('Failed to parse Dify stream event:', error)
+                    const parseError = new DifyStreamError(
+                        'Failed to parse Dify stream event',
+                        undefined,
+                        error instanceof Error ? error : new Error(String(error))
+                    )
+                    if (this.config.onError) {
+                        this.config.onError(parseError)
+                    } else {
+                        console.warn('Failed to parse Dify stream event:', error)
+                    }
                 }
             }
         }
@@ -147,20 +185,140 @@ export class DifyStreamParser {
     }
 }
 
+// Dify 配置构建器
+export class DifyConfigBuilder {
+    private config: Partial<DifyWorkflowConfig> = {}
+
+    constructor(baseConfig?: Partial<DifyWorkflowConfig>) {
+        if (baseConfig) {
+            this.config = { ...baseConfig }
+        }
+    }
+
+    withApiKey(apiKey: string): DifyConfigBuilder {
+        this.config.apiKey = apiKey
+        return this
+    }
+
+    withBaseURL(baseURL: string): DifyConfigBuilder {
+        this.config.baseURL = baseURL
+        return this
+    }
+
+    withTimeout(timeout: number): DifyConfigBuilder {
+        this.config.timeout = timeout
+        return this
+    }
+
+    build(): DifyWorkflowConfig {
+        return {
+            apiKey: this.config.apiKey || getCurrentEnv().DIFY_API_KEY,
+            baseURL: this.config.baseURL || getCurrentEnv().DIFY_API_BASE_URL,
+            timeout: this.config.timeout || 30000,
+        }
+    }
+
+    // 静态工厂方法
+    static fromEnv(): DifyConfigBuilder {
+        return new DifyConfigBuilder()
+    }
+
+    static fromConfig(config: Partial<DifyWorkflowConfig>): DifyConfigBuilder {
+        return new DifyConfigBuilder(config)
+    }
+}
+
+// 统一的流式请求处理函数
+async function _handleStreamRequest(
+    params: DifyWorkflowParams,
+    streamConfig: DifyStreamConfig,
+    config: Partial<DifyWorkflowConfig> | undefined,
+    urlBuilder: (baseURL: string, params: DifyWorkflowParams) => string
+): Promise<void> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    }
+
+    // 如果提供了 API Key，添加到请求头
+    if (config?.apiKey) {
+        headers['Authorization'] = `Bearer ${config.apiKey}`
+    }
+
+    try {
+        const baseURL = config?.baseURL || getCurrentEnv().DIFY_API_BASE_URL
+        const url = urlBuilder(baseURL, params)
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(params),
+        })
+
+        if (!response.ok) {
+            const error = new DifyStreamError(
+                `HTTP error! status: ${response.status}`,
+                undefined,
+                new Error(`HTTP ${response.status}: ${response.statusText}`)
+            )
+            if (streamConfig.onError) {
+                streamConfig.onError(error)
+            }
+            return
+        }
+
+        if (!response.body) {
+            const error = new DifyStreamError('Response body is null')
+            if (streamConfig.onError) {
+                streamConfig.onError(error)
+            }
+            return
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        const parser = new DifyStreamParser(streamConfig)
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read()
+
+                if (done) {
+                    break
+                }
+
+                const chunk = decoder.decode(value, { stream: true })
+                parser.parseChunk(chunk)
+            }
+        } finally {
+            reader.releaseLock()
+        }
+    } catch (error) {
+        const streamError = new DifyStreamError(
+            'Stream request failed',
+            undefined,
+            error instanceof Error ? error : new Error(String(error))
+        )
+        if (streamConfig.onError) {
+            streamConfig.onError(streamError)
+        }
+    }
+}
+
 // Dify API
 export const difyApi = {
     // 执行工作流
-    invokeCompletion: (
+    invokeCompletion: <T = unknown>(
         params: DifyWorkflowParams,
-        config?: Partial<DifyWorkflowConfig>
+        config?: Partial<DifyWorkflowConfig> | DifyConfigBuilder
     ) => {
+        const finalConfig = config instanceof DifyConfigBuilder ? config.build() : config
+
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         }
 
         // 如果提供了 API Key，添加到请求头
-        if (config?.apiKey) {
-            headers['Authorization'] = `Bearer ${config.apiKey}`
+        if (finalConfig?.apiKey) {
+            headers['Authorization'] = `Bearer ${finalConfig.apiKey}`
         }
 
         const requestConfig: RequestConfig = {
@@ -168,25 +326,27 @@ export const difyApi = {
             method: 'POST',
             data: params,
             headers,
-            timeout: config?.timeout || 30000,
+            timeout: finalConfig?.timeout || 30000,
             showLoading: true,
         }
 
-        return request<BaseResponse<DifyWorkflowResponse>>(requestConfig)
+        return request<BaseResponse<DifyWorkflowResponse<T>>>(requestConfig)
     },
 
     // 测试工作流
-    invokeChat: (
+    invokeChat: <T = unknown>(
         params: DifyWorkflowParams,
-        config?: Partial<DifyWorkflowConfig>
+        config?: Partial<DifyWorkflowConfig> | DifyConfigBuilder
     ) => {
+        const finalConfig = config instanceof DifyConfigBuilder ? config.build() : config
+
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         }
 
         // 如果提供了 API Key，添加到请求头
-        if (config?.apiKey) {
-            headers['Authorization'] = `Bearer ${config.apiKey}`
+        if (finalConfig?.apiKey) {
+            headers['Authorization'] = `Bearer ${finalConfig.apiKey}`
         }
 
         const requestConfig: RequestConfig = {
@@ -194,124 +354,94 @@ export const difyApi = {
             method: 'POST',
             data: params,
             headers,
-            timeout: config?.timeout || 30000,
+            timeout: finalConfig?.timeout || 30000,
             showLoading: true,
         }
 
-        return request<BaseResponse<DifyWorkflowResponse>>(requestConfig)
+        return request<BaseResponse<DifyWorkflowResponse<T>>>(requestConfig)
     },
 
     // 流式执行工作流
-    invokeCompletionStream: async (
+    invokeCompletionStream: (
         params: DifyWorkflowParams,
         streamConfig: DifyStreamConfig,
-        config?: Partial<DifyWorkflowConfig>
+        config?: Partial<DifyWorkflowConfig> | DifyConfigBuilder
     ): Promise<void> => {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-        }
+        const finalConfig = config instanceof DifyConfigBuilder ? config.build() : config
 
-        // 如果提供了 API Key，添加到请求头
-        if (config?.apiKey) {
-            headers['Authorization'] = `Bearer ${config.apiKey}`
-        }
-
-        try {
-            const baseURL = config?.baseURL || getCurrentEnv().DIFY_API_BASE_URL
-            const url = new URL('workflows/run', baseURL)
-            const response = await fetch(url.toString(), {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(params),
-            })
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`)
-            }
-
-            if (!response.body) {
-                throw new Error('Response body is null')
-            }
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            const parser = new DifyStreamParser(streamConfig)
-
-            try {
-                while (true) {
-                    const { done, value } = await reader.read()
-
-                    if (done) {
-                        break
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true })
-                    parser.parseChunk(chunk)
-                }
-            } finally {
-                reader.releaseLock()
-            }
-        } catch (error) {
-            if (streamConfig.onError) {
-                streamConfig.onError(error instanceof Error ? error : new Error(String(error)))
-            }
-        }
+        return _handleStreamRequest(
+            params,
+            streamConfig,
+            finalConfig,
+            (baseURL) => new URL('workflows/run', baseURL).toString()
+        )
     },
 
     // 流式测试工作流
-    invokeChatStream: async (
+    invokeChatStream: (
         params: DifyWorkflowParams,
         streamConfig: DifyStreamConfig,
-        config?: Partial<DifyWorkflowConfig>
+        config?: Partial<DifyWorkflowConfig> | DifyConfigBuilder
     ): Promise<void> => {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
+        const finalConfig = config instanceof DifyConfigBuilder ? config.build() : config
+
+        return _handleStreamRequest(
+            params,
+            streamConfig,
+            finalConfig,
+            (baseURL, params) => new URL(`workflows/run/${params.workflow_id}`, baseURL).toString()
+        )
+    },
+
+    // 便捷方法：使用默认配置
+    withDefaultConfig() {
+        return {
+            invokeCompletion: <T = unknown>(params: DifyWorkflowParams) =>
+                this.invokeCompletion<T>(params, defaultDifyConfig),
+            invokeChat: <T = unknown>(params: DifyWorkflowParams) =>
+                this.invokeChat<T>(params, defaultDifyConfig),
+            invokeCompletionStream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+                this.invokeCompletionStream(params, streamConfig, defaultDifyConfig),
+            invokeChatStream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+                this.invokeChatStream(params, streamConfig, defaultDifyConfig),
         }
+    },
 
-        // 如果提供了 API Key，添加到请求头
-        if (config?.apiKey) {
-            headers['Authorization'] = `Bearer ${config.apiKey}`
-        }
+    // 便捷方法：创建配置构建器
+    config() {
+        return DifyConfigBuilder.fromEnv()
+    },
 
-        try {
-            const baseURL = config?.baseURL || getCurrentEnv().DIFY_API_BASE_URL
-            const url = new URL(`workflows/run/${params.workflow_id}`, baseURL)
-            const response = await fetch(url.toString(), {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(params),
-            })
+    // 便捷方法：快速调用（使用环境变量配置）
+    quick: {
+        // 快速执行工作流
+        invoke: <T = unknown>(params: DifyWorkflowParams) =>
+            difyApi.invokeCompletion<T>(params, defaultDifyConfig),
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`)
-            }
+        // 快速测试工作流
+        chat: <T = unknown>(params: DifyWorkflowParams) =>
+            difyApi.invokeChat<T>(params, defaultDifyConfig),
 
-            if (!response.body) {
-                throw new Error('Response body is null')
-            }
+        // 快速流式执行
+        stream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+            difyApi.invokeCompletionStream(params, streamConfig, defaultDifyConfig),
 
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            const parser = new DifyStreamParser(streamConfig)
+        // 快速流式聊天
+        chatStream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+            difyApi.invokeChatStream(params, streamConfig, defaultDifyConfig),
+    },
 
-            try {
-                while (true) {
-                    const { done, value } = await reader.read()
-
-                    if (done) {
-                        break
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true })
-                    parser.parseChunk(chunk)
-                }
-            } finally {
-                reader.releaseLock()
-            }
-        } catch (error) {
-            if (streamConfig.onError) {
-                streamConfig.onError(error instanceof Error ? error : new Error(String(error)))
-            }
+    // 便捷方法：链式配置
+    withConfig(config: Partial<DifyWorkflowConfig>) {
+        return {
+            invokeCompletion: <T = unknown>(params: DifyWorkflowParams) =>
+                this.invokeCompletion<T>(params, config),
+            invokeChat: <T = unknown>(params: DifyWorkflowParams) =>
+                this.invokeChat<T>(params, config),
+            invokeCompletionStream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+                this.invokeCompletionStream(params, streamConfig, config),
+            invokeChatStream: (params: DifyWorkflowParams, streamConfig: DifyStreamConfig) =>
+                this.invokeChatStream(params, streamConfig, config),
         }
     },
 }

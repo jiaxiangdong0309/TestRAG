@@ -60,8 +60,6 @@
       </div>
     </div>
 
-
-
     <!-- 文本内容显示 -->
     <div v-if="accumulatedText" class="bg-white rounded-lg shadow p-6 mb-6">
       <h2 class="text-lg font-semibold text-gray-800 mb-4">文本内容</h2>
@@ -71,7 +69,7 @@
       </div>
     </div>
 
-        <!-- 错误显示区域 -->
+    <!-- 错误显示区域 -->
     <div v-if="error" class="bg-white rounded-lg shadow p-6">
       <h2 class="text-lg font-semibold text-gray-800 mb-4">错误信息</h2>
       <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -83,8 +81,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { difyApi, defaultDifyConfig, type DifyStreamConfig, type DifyStreamEvent } from '../../api/modules/dify'
+import { difyApi, type DifyStreamConfig, type DifyStreamEvent, type DifyStreamError } from '../../api/modules/dify'
 import type { DifyWorkflowParams } from '../../api/modules/dify'
+
+// 定义组件名称
+defineOptions({
+  name: 'DifySseTest'
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -99,8 +102,8 @@ const streamOutput = ref<Array<{type: string, content: string, timestamp: number
 const accumulatedText = ref('')
 const currentTextChunk = ref('')
 
-// 配置 - 直接使用默认配置
-const config = defaultDifyConfig
+// 配置 - 使用新的便捷方法
+const config = difyApi.config().build()
 
 // 计算属性：是否有结果
 const hasResults = computed(() => {
@@ -139,7 +142,7 @@ const createStreamConfig = (): DifyStreamConfig => ({
     })
   },
 
-    onWorkflowStarted: (event: DifyStreamEvent) => {
+  onWorkflowStarted: (event: DifyStreamEvent) => {
     streamOutput.value.push({
       type: '工作流开始',
       content: `工作流开始执行，ID: ${event.workflow_run_id || event.id}`,
@@ -207,9 +210,22 @@ const createStreamConfig = (): DifyStreamConfig => ({
     loading.value = false
   },
 
-    onError: (err: Error) => {
-    error.value = err.message
+  onError: (err: DifyStreamError) => {
+    // 使用新的错误类型，提供更详细的错误信息
+    const errorMessage = err.originalError
+      ? `${err.message}: ${err.originalError.message}`
+      : err.message
+
+    error.value = errorMessage
     loading.value = false
+
+    // 记录错误详情到控制台
+    console.error('Dify Stream Error:', {
+      name: err.name,
+      message: err.message,
+      originalError: err.originalError,
+      event: err.event
+    })
   },
 
   onComplete: () => {
@@ -217,7 +233,7 @@ const createStreamConfig = (): DifyStreamConfig => ({
   }
 })
 
-// 流式执行工作流
+// 流式执行工作流 - 使用新的便捷方法
 const invokeCompletionStream = async () => {
   if (!userInput.value.trim()) {
     error.value = '请输入内容'
@@ -241,14 +257,17 @@ const invokeCompletionStream = async () => {
     }
 
     const streamConfig = createStreamConfig()
-    await difyApi.invokeCompletionStream(params, streamConfig, config)
-  } catch (err: any) {
-    error.value = err.message || '执行工作流失败'
+
+    // 使用新的便捷方法
+    await difyApi.quick.stream(params, streamConfig)
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    error.value = errorMessage || '执行工作流失败'
     loading.value = false
   }
 }
 
-// 流式测试工作流
+// 流式测试工作流 - 使用新的便捷方法
 const invokeChatStream = async () => {
   if (!userInput.value.trim()) {
     error.value = '请输入内容'
@@ -272,9 +291,12 @@ const invokeChatStream = async () => {
     }
 
     const streamConfig = createStreamConfig()
-    await difyApi.invokeChatStream(params, streamConfig, config)
-  } catch (err: any) {
-    error.value = err.message || '测试工作流失败'
+
+    // 使用新的便捷方法
+    await difyApi.quick.chatStream(params, streamConfig)
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    error.value = errorMessage || '测试工作流失败'
     loading.value = false
   }
 }
