@@ -5,7 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/search'
+      redirect: '/chat'
     },
     {
       path: '/search',
@@ -46,6 +46,16 @@ const router = createRouter({
       path: '/dify-sse',
       name: 'dify-sse',
       component: () => import('../pages/dify-sse/index.vue'),
+    },
+    {
+      path: '/chat',
+      name: 'chat',
+      component: () => import('../pages/chat/index.vue'),
+    },
+    {
+      path: '/webpage-preview',
+      name: 'webpage-preview',
+      component: () => import('../pages/webpage-preview/index.vue'),
     },
   ],
 })

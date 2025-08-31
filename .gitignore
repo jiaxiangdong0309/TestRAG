@@ -67,3 +67,6 @@ jspm_packages/
 
 # Cursor IDE specific files with sensitive information
 .cursor/mcp.json
+
+src/api/config/config.local.ts
+

@@ -1,116 +1,15 @@
-# TestRAG
-
-这是一个使用 Vue 3 + Vite + Tailwind CSS 构建的前端项目。
-
-## 技术栈
-
-- **Vue 3** - 渐进式 JavaScript 框架
-- **Vite** - 快速的开发服务器和构建工具
-- **Tailwind CSS** - 实用优先的 CSS 框架
-- **TypeScript** - 类型安全的 JavaScript
-- **Vue Router** - Vue.js 官方路由管理器
-- **Pinia** - Vue 的状态管理库
-
-## 开发环境要求
-
-- Node.js 20.19.4 (自动版本管理)
-- npm 或 yarn
-
-> 💡 **提示**: 项目已配置自动 Node.js 版本管理，进入项目目录时会自动切换到 20.19.4
-
-nvm use 20.19.4
-
-## 安装和运行
-
-```bash
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 预览生产构建
-npm run preview
-
-# 代码格式化
-npm run format
-
-# 代码检查
-npm run lint
-```
-
-## 项目结构
-
-```
-TestRAG/
-├── .nvmrc                    # Node.js 版本配置
-├── .node-version             # 备用版本文件
-├── src/
-│   ├── api/                  # API 模块
-│   │   ├── sse/             # SSE 客户端模块
-│   │   └── index.ts         # API 主入口
-│   ├── assets/              # 静态资源
-│   ├── components/          # Vue 组件
-│   ├── router/              # 路由配置
-│   ├── stores/              # Pinia 状态管理
-│   ├── views/               # 页面组件
-│   ├── App.vue              # 根组件
-│   └── main.ts              # 应用入口
-├── public/                  # 公共静态资源
-├── docs/                    # 项目文档
-├── tailwind.config.js       # Tailwind CSS 配置
-├── postcss.config.js        # PostCSS 配置
-└── vite.config.ts           # Vite 配置
-```
-
-## 特性
-
-- 🚀 基于 Vite 的快速开发体验
-- 🎨 使用 Tailwind CSS 的现代化 UI
-- 📱 响应式设计
-- 🔧 TypeScript 支持
-- 📦 组件化开发
-- 🛣️ Vue Router 路由管理
-- 🗃️ Pinia 状态管理
-- 🔄 SSE 实时数据流支持
-- 🤖 自动化 Node.js 版本管理
-
-## 开发指南
-
-1. 项目使用 Vue 3 Composition API
-2. 样式使用 Tailwind CSS 类名
-3. 组件放置在 `src/components` 目录
-4. 页面放置在 `src/views` 目录
-5. 路由配置在 `src/router` 目录
-6. SSE 模块在 `src/api/sse` 目录
-
-## 配置指南
-
-- 📖 [SSE 模块详细文档](./docs/SSE-Module-Setup.md)
-- ⚡ [快速配置指南](./docs/Quick-Setup-Guide.md)
-
-## 许可证
-
-MIT
-
-
-
-```html
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
-  <meta name="description" content="简要介绍科锐公司及其主要业务。">
-  <meta name="keywords" content="科锐, 公司简介, 业务概述">
-  <meta property="og:title" content="科锐简介">
-  <meta property="og:description" content="简要介绍科锐公司及其主要业务。">
+  <meta name="description" content="Talk2Page 是一款面向非技术和轻量技术用户的工具，能够将聊天内容快速转换为可分享的网页。">
+  <meta name="keywords" content="Talk2Page, 自动生成网页, 产品经理工具, 内容运营, 独立开发者">
+  <meta property="og:title" content="Talk2Page - 自动生成网页工具">
+  <meta property="og:description" content="Talk2Page 是一款面向非技术和轻量技术用户的工具，能够将聊天内容快速转换为可分享的网页。">
   <meta property="og:type" content="article">
-  <title>科锐简介</title>
+  <title>Talk2Page - 自动生成网页工具</title>
   <style>
     /* === CSS BASE START === */
     :root {
@@ -119,7 +18,7 @@ MIT
       --muted: #9aa4b2;
       --card: #111827;
       --border: #1f2937;
-      --accent: #0ea5e9;
+      --accent: #ef4444;
 
       --container: 72ch;
       --container-wide: 1200px;
@@ -165,8 +64,8 @@ MIT
     .hero {
       padding: calc(var(--sp-6) * 1.5) 0 var(--sp-6);
       background:
-        radial-gradient(1200px 600px at 20% -10%, rgba(37,99,235,.25), transparent 60%),
-        radial-gradient(1200px 600px at 80% -10%, rgba(6,182,212,.20), transparent 60%);
+        radial-gradient(1200px 600px at 20% -10%, rgba(239,68,68,.25), transparent 60%),
+        radial-gradient(1200px 600px at 80% -10%, rgba(168,85,247,.20), transparent 60%);
     }
     .hero.centered { text-align: center; }
     .hero .title { font-size: clamp(32px, 6vw, 56px); font-weight: 700; margin-bottom: var(--sp-3); }
@@ -209,29 +108,102 @@ MIT
   </style>
 </head>
 <body>
-  <header class="hero minimal">
+  <header class="hero visual">
     <div class="container">
-      <h1 class="title">科锐简介</h1>
-      <p class="subtitle">欢迎了解科锐公司，以下是简要介绍。</p>
+      <h1 class="title">欢迎来到 Talk2Page</h1>
+      <p class="subtitle">一键将聊天内容转换为精美网页，轻松分享你的创意。</p>
     </div>
   </header>
   <main class="container">
-    <section class="section">
-      <article class="prose card">
-        <h2>公司概述</h2>
-        <p>科锐是一家专注于高科技产品研发与生产的企业，致力于为客户提供创新的解决方案。公司拥有一支专业的研发团队，不断推动技术进步，产品广泛应用于多个领域。</p>
-      </article>
+    <section class="section prose">
+      <h2>核心功能</h2>
+      <p>Talk2Page 提供以下核心功能：<br>- 结构化输出稳定<br>- 单文件 HTML 可离线分享<br>- 严格内容安全清洗<br>- 内置现代风格主题<br>- 支持一键下载</p>
     </section>
     <section class="section">
+      <h2>使用流程</h2>
+      <ul class="grid-2">
+        <li>输入聊天内容</li>
+        <li>选择主题风格</li>
+        <li>一键生成网页</li>
+        <li>下载或分享</li>
+      </ul>
+    </section>
+    <section class="section prose">
+      <h2>示例代码</h2>
+      <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;Talk2Page Example&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;你的聊天内容&lt;/h1&gt;
+  &lt;p&gt;这里是自动生成的网页内容。&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+    </section>
+    <section class="section">
+      <h2>功能对比表</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>功能</th>
+              <th>Talk2Page</th>
+              <th>其他工具</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>结构化输出</td>
+              <td>稳定</td>
+              <td>不稳定</td>
+            </tr>
+            <tr>
+              <td>离线分享</td>
+              <td>支持</td>
+              <td>不支持</td>
+            </tr>
+            <tr>
+              <td>安全清洗</td>
+              <td>严格</td>
+              <td>一般</td>
+            </tr>
+            <tr>
+              <td>主题风格</td>
+              <td>现代</td>
+              <td>传统</td>
+            </tr>
+            <tr>
+              <td>一键下载</td>
+              <td>支持</td>
+              <td>不支持</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section faq">
+      <h2>常见问题</h2>
+      <details>
+        <summary>Q: Talk2Page 支持哪些用户？</summary>
+        <p>A: 支持产品经理、内容运营、独立开发者等。</p>
+      </details>
+      <details>
+        <summary>Q: 如何生成网页？</summary>
+        <p>A: 输入聊天内容，选择主题，一键生成。</p>
+      </details>
+      <details>
+        <summary>Q: 生成的网页安全吗？</summary>
+        <p>A: 经过严格内容安全清洗，确保安全。</p>
+      </details>
+    </section>
+    <section class="section">
+      <h2>立即体验 Talk2Page</h2>
       <div class="card">
-        <h2>注意/待澄清</h2>
-        <ul>
-          <li>科锐公司的具体业务领域有哪些？</li>
-          <li>科锐公司的成立时间和主要成就有哪些？</li>
-        </ul>
+        <p>点击下方按钮，开始你的网页生成之旅。</p>
+        <a href="#" class="btn">立即体验</a>
       </div>
     </section>
   </main>
 </body>
 </html>
-```
