@@ -536,7 +536,7 @@ export const difyApi = {
         createMessage: (params: Record<string, unknown>, streamConfig?: DifyStreamConfig, config?: Partial<DifyWorkflowConfig>) => {
             const client = difyApi.client(config)
             const request = client
-                .request(API_ENDPOINTS.chat.createMessage)
+                .request(API_ENDPOINTS.workflow.invoke)
                 .body(params)
                 .build()
 
@@ -548,6 +548,7 @@ export const difyApi = {
             // 否则使用普通执行
             return client.execute<BaseResponse<unknown>>(request)
         },
+
 
         // 获取消息
         getMessages: (conversationId: string, limit?: number, config?: Partial<DifyWorkflowConfig>) => {
@@ -642,7 +643,7 @@ export const difyApi = {
 
 // 默认配置
 export const defaultDifyConfig: DifyWorkflowConfig = {
-    apiKey: getCurrentEnv().DIFY_API_KEY,
-    baseURL: getCurrentEnv().DIFY_API_BASE_URL,
+    apiKey: getCurrentEnv().DIFY_BROWSER_API_KEY,
+    baseURL: getCurrentEnv().DIFY_BROWSER_API_BASE_URL,
     timeout: 30000,
 }

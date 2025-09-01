@@ -36,7 +36,12 @@
                 AI
               </div>
               <div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl px-4 py-2 shadow-lg border border-gray-200">
-                <p class="text-gray-800">{{ message.content }}</p>
+                <!-- 使用Markdown渲染器显示内容 -->
+                <div v-html="renderMarkdown(message.content)" class="markdown-message"></div>
+
+                <!-- 文件列表 -->
+                <FileList v-if="message.files && message.files.length > 0" :files="message.files" />
+
                 <!-- 流式加载指示器 -->
                 <div v-if="message.isStreaming && !message.content" class="flex items-center mt-2">
                   <div class="flex space-x-1">
@@ -45,6 +50,19 @@
                     <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
                   </div>
                   <span class="text-xs text-green-600 ml-2">正在生成...</span>
+                </div>
+
+                <!-- 生成网页按钮 - 只在AI回复完成后显示 -->
+                <div v-if="!message.isStreaming && message.content && message.type === 'bot'" class="mt-3 pt-3 border-t border-gray-200">
+                  <button
+                    @click="generateWebpageFromMessage(message)"
+                    class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors duration-200"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    生成网页
+                  </button>
                 </div>
               </div>
             </div>
@@ -69,46 +87,8 @@
         </div>
 
         <!-- 按钮区域 -->
-        <div class="flex justify-between items-center pl-4 pr-4 pb-4">
-          <!-- 左侧功能按钮 -->
-          <div class="flex gap-3">
-            <!-- 联网搜索开关 -->
-            <button
-              @click="toggleSearchWeb"
-              :class="[
-                'btn-compact',
-                isSearchWebEnabled ? 'btn-primary' : 'btn-secondary',
-                'flex items-center gap-1'
-              ]"
-            >
-              <img src="../../assets/chat/web_open.svg" alt="联网搜索" class="w-5 h-5" />
-              {{ isSearchWebEnabled ? '联网' : '联网' }}
-            </button>
-
-            <button
-              @click="clearChat"
-              :disabled="chatHistory.length === 0"
-              class="btn-compact btn-gray flex items-center gap-1"
-            >
-              <img src="../../assets/chat/clear_open.svg" alt="记录" class="w-5 h-5" />
-              记录
-            </button>
-            <button
-              @click="generateWebpage"
-              :disabled="chatHistory.length === 0"
-              class="btn-compact btn-primary"
-            >
-              生成网页
-            </button>
-            <button
-              @click="runMockTest"
-              class="btn-compact btn-secondary"
-            >
-              模拟测试
-            </button>
-          </div>
-
-          <!-- 右侧发送按钮 -->
+        <div class="flex justify-end items-center pl-4 pr-4 pb-4">
+          <!-- 发送按钮 -->
           <button
             @click="sendMessage"
             :disabled="!inputMessage.trim() || isStreaming"
@@ -130,32 +110,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { difyApi } from '../../api/modules/dify'
+import { ref, nextTick, onMounted } from 'vue'
+import { difyApi, DifyStreamError } from '../../api/modules/dify'
+import MarkdownIt from 'markdown-it'
+import FileList from '../ui/FileList.vue'
 
 // 组件名称
 defineOptions({
   name: 'ChatPanel'
 })
 
+// 创建 MarkdownIt 实例
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true
+})
+
+// Markdown 渲染函数
+const renderMarkdown = (content: string): string => {
+  if (!content) return ''
+  try {
+    return md.render(content)
+  } catch (error) {
+    console.error('Markdown rendering error:', error)
+    return content // 如果渲染失败，返回原始内容
+  }
+}
+
 // 聊天记录类型
 interface ChatMessage {
   type: 'user' | 'bot'
   content: string
   isStreaming?: boolean
+  files?: Array<{
+    id: string
+    type: string
+    belongs_to: string
+    url: string
+    conversation_id: string
+  }>
 }
 
-// 定义事件
-const emit = defineEmits<{
-  generateWebpage: []
-  clearChat: []
-}>()
-
 // 响应式数据
-const inputMessage = ref('介绍一下科锐 200字')
+const inputMessage = ref('北京java')
 const chatHistory = ref<ChatMessage[]>([])
 const isStreaming = ref(false)
-const isSearchWebEnabled = ref(false) // 是否开启联网搜索
+const currentUser = ref('')
+
+// 获取当前用户
+const getCurrentUser = () => {
+  const savedUsername = localStorage.getItem('username')
+  return savedUsername || 'anonymous'
+}
+
+// 初始化时获取用户信息
+onMounted(() => {
+  currentUser.value = getCurrentUser()
+})
+
+// 监听 localStorage 变化
+window.addEventListener('storage', () => {
+  currentUser.value = getCurrentUser()
+})
 
 // 发送消息
 const sendMessage = async () => {
@@ -193,32 +211,47 @@ const sendMessage = async () => {
   }, 120000) // 2分钟超时
 
   try {
+    console.log('发送聊天请求，参数:', {
+      inputs: {
+        step: "岗位筛选"
+      },
+      query: messageContent,
+      response_mode: "streaming",
+      conversation_id: "",
+      user: currentUser.value,
+      files: []
+    })
+
     // 调用Dify API进行流式对话
-    await difyApi.quick.stream(
+    await difyApi.chat.createMessage(
       {
         inputs: {
-          question: messageContent,
-          history_message: JSON.stringify(chatHistory.value.map(msg => ({
-            type: msg.type,
-            content: msg.content
-          }))),
-          is_search_web: isSearchWebEnabled.value ? 1 : 0,
+          step: "岗位筛选",
         },
+        query: messageContent,
+        step: "岗位筛选",
         response_mode: "streaming",
-        user: "abc-123",
+        conversation_id: "",
+        user: currentUser.value,
+        files: []
       },
       {
         onTextChunk: (text: string) => {
+          console.log('收到文本块:', text, '长度:', text.length)
+
           // 实现真正的流式展示效果 - 逐步追加文本
           if (!botMessage.content) {
             botMessage.content = text
+            console.log('初始化机器人消息:', botMessage.content)
           } else {
             // 追加新的文本块，实现真正的流式效果
             botMessage.content += text
+            console.log('追加文本后机器人消息:', botMessage.content)
           }
 
           // 强制触发Vue响应式更新
           chatHistory.value = [...chatHistory.value]
+          console.log('聊天历史已更新，当前长度:', chatHistory.value.length)
 
           // 使用nextTick确保DOM更新
           nextTick(() => {
@@ -226,10 +259,11 @@ const sendMessage = async () => {
             const chatContainer = document.querySelector('.overflow-y-auto')
             if (chatContainer) {
               chatContainer.scrollTop = chatContainer.scrollHeight
+              console.log('已滚动到底部')
             }
           })
         },
-        onError: (error) => {
+        onError: (error: DifyStreamError) => {
           console.error('Dify API error:', error)
           let errorMessage = '抱歉，发生了错误，请稍后重试。'
 
@@ -255,6 +289,7 @@ const sendMessage = async () => {
           clearTimeout(timeoutId)
         },
         onComplete: () => {
+          console.log('流式响应完成')
           // 流式响应完成
           botMessage.isStreaming = false
           isStreaming.value = false
@@ -264,8 +299,37 @@ const sendMessage = async () => {
           console.log('AI返回数据完成:', {
             message: botMessage.content,
             timestamp: new Date().toISOString(),
-            messageLength: botMessage.content?.length || 0
+            messageLength: botMessage.content?.length || 0,
+            files: botMessage.files || [],
+            fileCount: botMessage.files?.length || 0
           })
+
+          // 如果有文件，单独打印文件信息
+          if (botMessage.files && botMessage.files.length > 0) {
+            console.log('📎 返回的文件信息:')
+            botMessage.files.forEach((file, index) => {
+              console.log(`  文件 ${index + 1}:`, {
+                id: file.id,
+                type: file.type,
+                belongs_to: file.belongs_to,
+                url: file.url,
+                conversation_id: file.conversation_id
+              })
+            })
+          } else {
+            console.log('📎 本次回复没有返回文件')
+          }
+        },
+        onFileReceived: (fileInfo) => {
+          console.log('收到文件:', fileInfo)
+          // 初始化文件数组（如果不存在）
+          if (!botMessage.files) {
+            botMessage.files = []
+          }
+          // 添加文件到消息中
+          botMessage.files.push(fileInfo)
+          // 强制触发Vue响应式更新
+          chatHistory.value = [...chatHistory.value]
         }
       }
     )
@@ -290,12 +354,6 @@ const sendMessage = async () => {
   }
 }
 
-// 清空聊天记录
-const clearChat = () => {
-  chatHistory.value = []
-  emit('clearChat')
-}
-
 // 处理键盘事件
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -304,21 +362,96 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-// 生成网页
-const generateWebpage = () => {
-  if (chatHistory.value.length === 0) return
-  emit('generateWebpage')
-}
+// 生成网页功能
+const generateWebpageFromMessage = (message: ChatMessage) => {
+  const content = message.content
+  if (!content) {
+    alert('没有内容可以生成网页。')
+    return
+  }
 
-// 切换联网搜索状态
-const toggleSearchWeb = () => {
-  isSearchWebEnabled.value = !isSearchWebEnabled.value
-}
-
-// 模拟测试：使用固定模板聊天记录生成网页（不写入左侧聊天记录）
-const runMockTest = async () => {
-  // 这里可以添加模拟测试逻辑
-  console.log('运行模拟测试')
+  const newWindow = window.open('', '_blank')
+  if (newWindow) {
+    newWindow.document.write(`
+      <html>
+        <head>
+          <title>网页预览</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              background-color: #f9f9f9;
+              padding: 20px;
+              margin: 0;
+            }
+            .markdown-content {
+              max-width: 800px;
+              margin: 0 auto;
+              background-color: #fff;
+              padding: 20px;
+              border-radius: 8px;
+              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            h1, h2, h3 {
+              color: #2c3e50;
+              margin-top: 20px;
+              margin-bottom: 10px;
+            }
+            p {
+              margin-bottom: 15px;
+            }
+            code {
+              background-color: #f0f0f0;
+              padding: 3px 6px;
+              border-radius: 4px;
+              font-size: 0.9em;
+            }
+            pre {
+              background-color: #f8f8f8;
+              padding: 15px;
+              border-radius: 8px;
+              overflow-x: auto;
+              font-size: 0.9em;
+            }
+            ul, ol {
+              margin-left: 20px;
+              margin-bottom: 15px;
+            }
+            li {
+              margin-bottom: 8px;
+            }
+            blockquote {
+              border-left: 4px solid #eee;
+              padding-left: 15px;
+              margin-left: 10px;
+              margin-bottom: 15px;
+              background-color: #f9f9f9;
+              color: #666;
+              font-style: italic;
+            }
+            a {
+              color: #3498db;
+              text-decoration: none;
+            }
+            a:hover {
+              text-decoration: underline;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="markdown-content">
+            ${renderMarkdown(content)}
+          </div>
+        </body>
+      </html>
+    `)
+    newWindow.document.close()
+  } else {
+    alert('无法打开新窗口进行预览。')
+  }
 }
 </script>
 
@@ -433,5 +566,50 @@ const runMockTest = async () => {
 
 .animate-bounce {
   animation: bounce 1.4s ease-in-out infinite both;
+}
+
+/* Markdown 内容样式优化 */
+.markdown-message {
+  @apply text-gray-800;
+}
+
+.markdown-message :deep(p) {
+  @apply mb-2 last:mb-0;
+}
+
+.markdown-message :deep(code) {
+  @apply bg-gray-200 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.markdown-message :deep(pre) {
+  @apply bg-gray-100 p-3 rounded-lg overflow-x-auto my-2 text-sm;
+}
+
+.markdown-message :deep(ul), .markdown-message :deep(ol) {
+  @apply pl-4 mb-2;
+}
+
+.markdown-message :deep(li) {
+  @apply mb-1;
+}
+
+.markdown-message :deep(blockquote) {
+  @apply border-l-4 border-gray-300 pl-3 py-1 my-2 bg-gray-50 text-gray-600 italic text-sm;
+}
+
+.markdown-message :deep(h1), .markdown-message :deep(h2), .markdown-message :deep(h3) {
+  @apply font-bold text-gray-900 mb-2 mt-3;
+}
+
+.markdown-message :deep(h1) {
+  @apply text-lg;
+}
+
+.markdown-message :deep(h2) {
+  @apply text-base;
+}
+
+.markdown-message :deep(h3) {
+  @apply text-sm;
 }
 </style>

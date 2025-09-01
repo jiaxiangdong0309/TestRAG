@@ -116,7 +116,7 @@ const sendMessage = async () => {
 
   try {
     // 调用Dify API进行流式对话
-    await difyApi.quick.stream(
+    await difyApi.stream.invoke(
       {
         inputs: {
           question: messageContent,

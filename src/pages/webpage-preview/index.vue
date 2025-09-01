@@ -85,15 +85,7 @@
                 </svg>
                 {{ isSearchWebEnabled ? '联网' : '联网' }}
               </button>
-              <button
-                @click="toggleLocalMock"
-                :class="[
-                  'px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm',
-                  isLocalMockEnabled ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
-                ]"
-              >
-                本地流
-              </button>
+
             </div>
 
             <button
@@ -128,23 +120,17 @@
         >
           刷新内容
         </button>
-        <button
-          @click="showLocalTemplate"
-          class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
-        >
-          展示本地模板
-        </button>
+
       </div>
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { difyApi } from '../../api/modules/dify'
-import templateHtml from './template.html?raw'
+//网页生成就使用difyBrowser
+import { difyApi, DifyStreamError } from '../../api/modules/difyBrowser'
 
 // 组件名称
 defineOptions({
@@ -166,7 +152,7 @@ const inputMessage = ref(`[
   { "type": "bot", "content": "已记录核心卖点：1) 结构化输出稳定；2) 单文件可离线分享；3) 安全清洗防注入；4) 现代风格主题；5) 一键下载与分享。" }
 ]`)
 const isSearchWebEnabled = ref(false) // 是否开启联网搜索
-const isLocalMockEnabled = ref(false) // 是否使用本地流式模拟
+
 
 // 当内容包含完整HTML结构时，使用 iframe 渲染
 const shouldUseIframe = computed(() => /<html|<head|<body|<style/i.test(webpageContent.value))
@@ -332,10 +318,7 @@ const toggleSearchWeb = () => {
   isSearchWebEnabled.value = !isSearchWebEnabled.value
 }
 
-// 切换本地流式模拟
-const toggleLocalMock = () => {
-  isLocalMockEnabled.value = !isLocalMockEnabled.value
-}
+
 
 // 处理键盘事件
 const handleKeyDown = (event: KeyboardEvent) => {
@@ -345,13 +328,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-// 展示本地HTML模板
-const showLocalTemplate = () => {
-  webpageContent.value = templateHtml
-  localStorage.setItem('webpageContent', templateHtml)
-  // 进入本地模板预览时，确保停止流式刷新
-  // stopIframeFlushTimer() // This line is removed as per the edit hint
-}
+
 
 // 从输入框生成网页内容
 const generateWebpageFromInput = async () => {
@@ -392,52 +369,23 @@ const generateWebpageFromInput = async () => {
       question = inputMessage.value.trim()
     }
 
-    if (isLocalMockEnabled.value) {
-      console.log('🎭 开始本地流式模拟')
-      // 本地流式模拟：把 templateHtml 按块推送
-      await beginStreamingIframe()
-      console.log('✅ iframe文档已初始化')
-      const full = templateHtml
-      const chunkSize = 50
-      let offset = 0
 
-      const pushChunk = () => {
-        if (offset >= full.length) {
-          console.log('🎉 本地模拟完成')
-          // 模拟完成
-          isStreamingIframe.value = false
-          iframeReady.value = false
-          isGeneratingWebpage.value = false
-          webpageContent.value = streamingHtml.value
-          streamingHtml.value = ''
-          localStorage.setItem('webpageContent', webpageContent.value)
-          return
-        }
-        const next = full.slice(offset, offset + chunkSize)
-        offset += chunkSize
-        console.log(`📦 推送第${Math.floor(offset/chunkSize)}块，长度: ${next.length}, 进度: ${Math.round(offset/full.length*100)}%`)
-
-        // 实时渲染到iframe
-        streamRenderToIframe(next)
-        streamingHtml.value += next
-
-        setTimeout(pushChunk, 200)
-      }
-      pushChunk()
-      return
-    }
 
     // 调用Dify API进行流式对话
-    await difyApi.quick.stream(
+    await difyApi.chat.createMessage(
       {
         inputs: {
+          step: "网页生成",
           question: `请根据以下需求生成一个完整的网页HTML内容：${question}`,
           history_message: JSON.stringify(chatHistory),
           is_search_web: isSearchWebEnabled.value ? 1 : 0,
           is_create_html: 1,
         },
-        response_mode: 'streaming',
+        query: question,
+        response_mode: "streaming",
+        conversation_id: "",
         user: 'webpage-preview-user',
+        files: []
       },
       {
         onTextChunk: (text: string) => {
@@ -470,7 +418,7 @@ const generateWebpageFromInput = async () => {
             }
           }
         },
-        onError: (error) => {
+        onError: (error: DifyStreamError) => {
           console.error('Dify API error:', error)
           let errorMessage = '抱歉，发生了错误，请稍后重试。'
 
