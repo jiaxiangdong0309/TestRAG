@@ -72,21 +72,6 @@
           </div>
 
           <div class="flex justify-between items-center px-4 pb-4">
-            <div class="flex gap-3">
-              <button
-                @click="toggleSearchWeb"
-                :class="[
-                  'px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm flex items-center gap-1',
-                  isSearchWebEnabled ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
-                ]"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
-                {{ isSearchWebEnabled ? '联网' : '联网' }}
-              </button>
-
-            </div>
 
             <button
               @click="generateWebpageFromInput"
@@ -151,7 +136,6 @@ const inputMessage = ref(`[
   { "type": "user", "content": "核心卖点有：结构化输出稳定、单文件 HTML 可离线分享、严格内容安全清洗、内置现代风格主题、支持一键下载。" },
   { "type": "bot", "content": "已记录核心卖点：1) 结构化输出稳定；2) 单文件可离线分享；3) 安全清洗防注入；4) 现代风格主题；5) 一键下载与分享。" }
 ]`)
-const isSearchWebEnabled = ref(false) // 是否开启联网搜索
 
 
 // 当内容包含完整HTML结构时，使用 iframe 渲染
@@ -313,10 +297,6 @@ const goToChat = () => {
   router.push('/chat')
 }
 
-// 切换联网搜索状态
-const toggleSearchWeb = () => {
-  isSearchWebEnabled.value = !isSearchWebEnabled.value
-}
 
 
 
@@ -378,7 +358,6 @@ const generateWebpageFromInput = async () => {
           step: "网页生成",
           question: `请根据以下需求生成一个完整的网页HTML内容：${question}`,
           history_message: JSON.stringify(chatHistory),
-          is_search_web: isSearchWebEnabled.value ? 1 : 0,
           is_create_html: 1,
         },
         query: question,
@@ -448,7 +427,6 @@ const generateWebpageFromInput = async () => {
             isStreamingIframe.value = false
             iframeReady.value = false
           }
-          localStorage.setItem('webpageContent', webpageContent.value)
           console.log('✅ 状态更新完成，内容已保存到localStorage')
           console.log('📊 最终内容长度:', webpageContent.value?.length || 0)
           console.log('🔍 最终内容预览:', webpageContent.value?.substring(0, 200) + '...')
@@ -487,10 +465,6 @@ const refreshContent = () => {
 
 // 页面加载时检查是否有存储的内容
 onMounted(async () => {
-  const storedContent = localStorage.getItem('webpageContent')
-  if (storedContent) {
-    webpageContent.value = storedContent
-  }
 })
 
 onUnmounted(() => {
